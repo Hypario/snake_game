@@ -8,16 +8,8 @@ use piston::event_loop::*;
 use piston::input::*;
 use glutin_window::GlutinWindow as Window;
 use opengl_graphics::{GlGraphics, OpenGL};
-use std::collections::LinkedList;
+use std::collections::VecDeque;
 use std::iter::FromIterator;
-
-#[derive(Clone, PartialEq)]
-enum Direction {
-    Right,
-    Left,
-    Up,
-    Down,
-}
 
 struct Game {
     gl: GlGraphics,
@@ -37,10 +29,16 @@ impl Game {
         self.snake.render(&mut self.gl, args);
     }
 
-    fn update(&mut self) {
-        self.snake.update();
+    /// launch the update of the snake
+    fn update(&mut self) -> bool{
+        if !self.snake.update() {
+            return false;
+        }
+        true
     }
 
+    /// event that listen the pressed button
+    /// and set the direction accordingly
     fn pressed(&mut self, btn: &Button) {
         let last_direction = self.snake.dir.clone();
 
@@ -54,8 +52,18 @@ impl Game {
     }
 }
 
+/// The direction the snake can move
+#[derive(Clone, PartialEq)]
+enum Direction {
+    Right,
+    Left,
+    Up,
+    Down,
+}
+
 struct Snake {
-    body: LinkedList<(i32, i32)>,
+    body: VecDeque<(u32, u32)>,
+    width: u32,
     dir: Direction,
 }
 
@@ -69,9 +77,9 @@ impl Snake {
             .iter()
             .map(|&(x, y)| {
                 rectangle::square(
-                    (x * 20) as f64,
-                    (y * 20) as f64,
-                    20_f64)
+                    (x * self.width) as f64,
+                    (y * self.width) as f64,
+                    self.width as f64)
             })
             .collect();
 
@@ -80,8 +88,8 @@ impl Snake {
         });
     }
 
-    fn update(&mut self) {
-        let mut new_head = (*self.body.front().expect("Snake has no body")).clone();
+    fn update(&mut self) -> bool {
+        let mut new_head = (self.body.front().expect("Snake has no body")).clone();
 
         match self.dir {
             Direction::Left => new_head.0 -= 1,
@@ -90,16 +98,34 @@ impl Snake {
             Direction::Down => new_head.1 += 1,
         }
 
+        if self.is_colliding(new_head.0, new_head.1) {
+            return false;
+        }
+
         self.body.push_front(new_head);
         self.body.pop_back();
+
+        true
+    }
+
+    /// check collision
+    fn is_colliding(&self, x: u32, y: u32) -> bool {
+        self.body.iter().any(|part| x == part.0 && y == part.1)
     }
 }
 
 fn main() {
     let open_gl = OpenGL::V3_2;
 
+    const COLS: u32 = 30;
+    const ROWS: u32 = 30;
+    const SQUARE_WIDTH: u32 = 30;
+
+    const WIDTH: u32 = COLS * SQUARE_WIDTH;
+    const HEIGHT: u32 = ROWS * SQUARE_WIDTH;
+
     let mut window: Window = WindowSettings::new(
-        "Snake Game", [200, 200],
+        "Snake Game", [WIDTH, HEIGHT],
     ).graphics_api(open_gl)
         .exit_on_esc(true)
         .build()
@@ -108,7 +134,8 @@ fn main() {
     let mut game = Game {
         gl: GlGraphics::new(open_gl),
         snake: Snake {
-            body: LinkedList::from_iter((vec![(0, 0), (0, 1)]).into_iter()),
+            body: VecDeque::from_iter(vec![(0, 0), (0, 1)]), // create a VecDeque from Vector
+            width: SQUARE_WIDTH,
             dir: Direction::Right,
         },
     };
@@ -120,7 +147,9 @@ fn main() {
         }
 
         if let Some(_args) = e.update_args() {
-            game.update();
+            if !game.update() {
+                break;
+            }
         }
 
         if let Some(k) = e.button_args() {
@@ -129,4 +158,5 @@ fn main() {
             }
         }
     }
+    println!("You lost !");
 }
